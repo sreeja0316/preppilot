@@ -73,15 +73,20 @@ app.post("/api/questions", async (req, res) => {
   }
 });
 
-// 4) Teach It Back: planted weak answer that mirrors the user's own flaw
+// 4) Teach It Back: planted weak answer with a specific, deliberate flaw.
+// Round 1 (mapped to Q2 of the mock interview) is always metric-free.
+// Round 2 (mapped to Q3 of the mock interview) always hides the candidate's personal contribution.
 app.post("/api/plant", async (req, res) => {
   try {
-    const exclude = req.body.exclude || [];
+    const { flawType, targetAnswer } = req.body;
+    const isMetric = flawType === "metric";
+    const flawInstruction = isMetric
+      ? 'The flaw MUST be that the answer has no measurable outcome or number of any kind — no percentages, counts, dollar amounts, or time saved. It should only make vague claims like "it went well" or "the team was happy with it".'
+      : 'The flaw MUST be that the answer never states what the candidate personally did — it should only use "we"/"the team" and never "I", so the individual\'s own contribution is invisible.';
+    const flawLabel = isMetric ? "no measurable outcome" : 'no personal contribution — says "we" instead of "I"';
     const out = await llm(
-      'Read the candidate\'s interview answers and pick a weakness they show (e.g. no measurable results, says "we" instead of "I", vague, rambling, no structure).' +
-        (exclude.length ? ` Do NOT reuse these already-covered flaws: ${exclude.join("; ")}. Pick a DIFFERENT one.` : "") +
-        ' Write a short, realistic, mediocre 2-3 sentence interview answer to a DIFFERENT question that has exactly that flaw. Return {"flaw":"short description of the flaw","plantedAnswer":"","hint":"one sentence telling the user this answer mirrors a pattern in their own answers, without naming the flaw"}.',
-      `ANSWERS:\n${(req.body.answers || []).map((a, i) => `Q${i + 1}: ${clip(a, 1500)}`).join("\n")}`
+      `You are writing a short, realistic, mediocre 2-3 sentence interview answer to plant in a "teach it back" exercise, so the candidate can practice spotting a flaw in someone else's answer. ${flawInstruction} Write it as an answer to a DIFFERENT interview question than any context given, in a similar theme or domain so it feels personal to the candidate. Return {"flaw":"${flawLabel}","plantedAnswer":"","hint":"one sentence telling the user this answer mirrors a pattern in their own answers, without naming the flaw"}.`,
+      `CANDIDATE'S OWN ANSWER TO MATCH IN THEME (do not copy it, do not reuse its exact wording):\n${clip(targetAnswer, 1500)}`
     );
     res.json(out);
   } catch (e) {
@@ -124,6 +129,35 @@ app.post("/api/resources", async (req, res) => {
     const out = await llm(
       'You are a career coach. For each missing skill listed, suggest one focused, well-known way to close that specific gap (a named learning platform, official certification path, or curriculum type — e.g. "official AWS Cloud Practitioner learning path", "freeCodeCamp GraphQL curriculum", "Coursera Google Data Analytics Certificate"). Tie the reason to the job description when relevant. Do not invent specific URLs, course IDs, prices, or completion times. Return {"resources":[{"skill":"","resource":"","why":"one short sentence"}]}, exactly one entry per skill given, same order as given.',
       `MISSING SKILLS:\n${missing.join(", ")}\n\nJOB DESCRIPTION:\n${clip(req.body.jd, 4000)}`
+    );
+    res.json(out);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Demo helper: write a plausible interview answer to whatever question is currently shown,
+// tailored to the resume/JD, so a "fill demo answer" button stays genuinely adaptive.
+app.post("/api/demo-answer", async (req, res) => {
+  try {
+    const { question, resume, jd } = req.body;
+    const out = await llm(
+      'Write a strong, specific, first-person interview answer (4-6 sentences, STAR-style: situation, action, measurable result) to the given interview question, as if spoken by the candidate whose resume is provided. Base it loosely on real-sounding details from the resume. Return {"answer":""}.',
+      `QUESTION: ${clip(question, 500)}\nRESUME:\n${clip(resume, 6000)}\n\nJOB DESCRIPTION:\n${clip(jd, 4000)}`
+    );
+    res.json(out);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Demo helper: write a corrected version of the planted weak answer, removing its specific flaw.
+app.post("/api/demo-fix", async (req, res) => {
+  try {
+    const { planted, flaw } = req.body;
+    const out = await llm(
+      'Rewrite the given weak interview answer so it no longer has the stated flaw, keeping it realistic and first-person, 3-5 sentences. Return {"fixed":""}.',
+      `WEAK ANSWER: ${clip(planted, 2000)}\nFLAW TO FIX: ${clip(flaw, 300)}`
     );
     res.json(out);
   } catch (e) {
@@ -195,6 +229,7 @@ input[type=file]{color:var(--mut);margin:6px 0;max-width:100%}
 <button class="mic" id="mic" onclick="toggleMic()" aria-label="Toggle microphone">🎙</button>
 <p class="mut" id="mst" style="text-align:center">Tap to answer out loud — or just type below.</p>
 <textarea id="tr" placeholder="Live transcript appears here (editable)…"></textarea>
+<p><button class="btn o" onclick="fillDemoAnswer()">⚡ Fill demo answer</button></p>
 <p><button class="btn" id="nx" onclick="nextQ()" disabled>Next question →</button></p>
 </section>
 
@@ -207,9 +242,11 @@ input[type=file]{color:var(--mut);margin:6px 0;max-width:100%}
 <div class="card"><i id="pl"></i></div>
 <b>What's wrong with this answer?</b>
 <textarea id="cr" placeholder="Write your critique…"></textarea>
+<p><button class="btn o" onclick="fillDemoCritique()">⚡ Fill demo critique</button></p>
 <button class="btn" id="cb" onclick="checkCrit()">Check my critique</button>
 <div class="res" id="cres"></div>
 <div id="fix" style="display:none"><h3>Now fix it yourself</h3><textarea id="fx" placeholder="Rewrite the answer so it's strong…"></textarea>
+<p><button class="btn o" onclick="fillDemoFix()">⚡ Fill demo fix</button></p>
 <button class="btn" onclick="finish()">Done — apply to my answer</button></div>
 <div class="card" id="loop" style="display:none"><b>Loop closed</b><p id="lp"></p><div class="ba" id="own"></div>
 <button class="btn" onclick="renderFeedback()">See my feedback summary →</button></div>
@@ -218,7 +255,7 @@ input[type=file]{color:var(--mut);margin:6px 0;max-width:100%}
 
 <section id="s5">
 <h2>Your Interview Feedback</h2>
-<p class="mut">A summary of this session — resume fit, interview confidence, ATS compatibility, and Teach It Back.</p>
+<p class="mut">A summary of this session — resume fit, interview confidence, and Teach It Back.</p>
 <div class="grid">
 <div class="card"><b>Resume–JD match</b><div class="score" id="fSc" style="font-size:2.2rem"></div><div class="bar"><i id="fScb"></i></div></div>
 <div class="card"><b>Communication &amp; confidence</b><div class="score" id="fConf" style="font-size:2.2rem"></div><p class="mut" id="fConfNote"></p></div>
@@ -333,9 +370,25 @@ rec.start();live=true;last=Date.now();$('#mic').classList.add('live');$('#mst').
 }
 function stop(){live=false;try{rec&&rec.stop()}catch(_){}clearInterval(timer);$('#mic').classList.remove('live');$('#mst').textContent='Tap to answer out loud — or just type below.';$('#nx').disabled=!$('#tr').value.trim()}
 $('#tr').addEventListener('input',()=>{$('#nx').disabled=!$('#tr').value.trim()});
+async function fillDemoAnswer(){
+    const btn=event.target;btn.disabled=true;btn.textContent='Writing…';
+    const question=Q[qi][easy?1:0];
+    try{
+        const d=await api('/api/demo-answer',{question,resume:$('#rt').value,jd:$('#jt').value});
+        if(!d.answer)throw 0;
+        $('#tr').value=d.answer;
+    }catch(_){
+        $('#tr').value="In my last role, I noticed our team was missing a clear milestone because two stakeholders had conflicting priorities. I set up a short working session, mapped out both requests against our quarterly goals, and proposed a phased plan that addressed the urgent need first while committing to a clear timeline for the rest. As a result, we shipped the first phase two weeks early and the stakeholders stayed aligned for the rest of the project.";
+    }
+    btn.disabled=false;btn.textContent='⚡ Fill demo answer';
+    $('#nx').disabled=false;
+}
 function nextQ(){if(live)stop();ans[qi]=$('#tr').value.trim();qi++;if(qi<Q.length)showQ();else startTeach()}
 
 /* ---------- Teach It Back ---------- */
+// Fixed mapping, no longer inferred from the user's own answers:
+// round 0 -> mirrors Q2 (index 1), always a metric-free planted answer.
+// round 1 -> mirrors Q3 (index 2), always a planted answer with no personal contribution ("we" not "I").
 let planted='',flawDesc='',caught=false;
 let teachRound=0,TEACH_ROUNDS=2,usedFlaws=[],caughtCount=0;
 const LOCAL={
@@ -349,19 +402,21 @@ async function startTeach(){
 }
 async function loadTeachRound(){
 
-TEACH_ROUNDS=Math.min(2,Math.max(1,ans.filter(x=>x).length||1));
+TEACH_ROUNDS=2;
     $('#tRound').textContent=`Round ${teachRound+1} of ${TEACH_ROUNDS}`;
 
 $('#tload').style.display='';$('#tbody').style.display='none';
 
 $('#cr').value='';$('#fx').value='';$('#cres').style.display='none';$('#fix').style.display='none';$('#loop').style.display='none';
-    const a=(teachRound===0?ans:[...ans].reverse()).join(' ');
-    const w=(a.match(/\bwe\b/gi)||[]).length,i=(a.match(/\bI\b/g)||[]).length;
-    localKey=(!/\d/.test(a)?'metric':(w>i?'own':'metric'));
 
-if(usedFlaws.includes(localKey))localKey=localKey==='metric'?'own':'metric';
+    // Round 0 always targets Q2 (index 1) and plants a metric-free answer.
+    // Round 1 always targets Q3 (index 2) and plants a personal-contribution-free answer.
+    const targetIdx=teachRound===0?1:2;
+    localKey=teachRound===0?'metric':'own';
+    const targetAnswer=ans[targetIdx]||ans.find(x=>x)||'';
+
     let d;
-    try{d=await api('/api/plant',{answers:ans,exclude:usedFlaws});if(!d.plantedAnswer)throw 0}catch(_){d=LOCAL[localKey]}
+    try{d=await api('/api/plant',{flawType:localKey,targetAnswer});if(!d.plantedAnswer)throw 0}catch(_){d=LOCAL[localKey]}
     planted=d.plantedAnswer;flawDesc=d.flaw;
 
 $('#pl').textContent=planted;$('#tip').textContent=d.hint||'';
@@ -378,9 +433,24 @@ $('#cb').disabled=false;caught=d.caught;if(caught)caughtCount++;
     r.textContent=(caught?'✅ Caught it — ':'⚠️ Missed it — ')+(d.feedback||'');
     $('#fix').style.display='block';
 }
+function fillDemoCritique(){
+    const t=$('#cr');
+    t.value=`This answer misses the mark on: ${flawDesc || 'a specific, checkable detail'}. A stronger answer would fix that directly instead of staying vague.`;
+}
+async function fillDemoFix(){
+    const btn=event.target;btn.disabled=true;btn.textContent='Writing…';
+    try{
+        const d=await api('/api/demo-fix',{planted,flaw:flawDesc});
+        if(!d.fixed)throw 0;
+        $('#fx').value=d.fixed;
+    }catch(_){
+        $('#fx').value="I led the redesign of our onboarding flow after noticing a drop-off in week-one signups. I proposed simplifying the first three steps, worked with design on a lighter version, and ran an A/B test. The result was a 22% increase in users completing onboarding within the first week.";
+    }
+    btn.disabled=false;btn.textContent='⚡ Fill demo fix';
+}
 function finish(){
     usedFlaws.push(localKey);
-    const ownIdx=teachRound%Math.max(1,ans.length);
+    const ownIdx=teachRound===0?1:2;
     const own=ans[ownIdx]||ans.find(x=>x)||'(no answer recorded)';
     $('#lp').textContent=(caught?'You caught the flaw here — ':'You missed it here — ')+'your own answers show the same pattern. Apply your rewrite to yours:';
     $('#own').innerHTML=`<span class="mut">Your Q${ownIdx+1} answer:</span> `+esc(own)+'<br><span class="acc">Your fix:</span> '+esc($('#fx').value||'(write a rewrite above)');
