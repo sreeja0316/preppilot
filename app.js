@@ -171,7 +171,7 @@ const PAGE_TOP = `<!DOCTYPE html>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>PrepPilot — Own the interview</title>
 <style>
-:root{--bg:#0B1220;--card:#1B2438;--blue:#3B82F6;--bright:#5B9BFF;--text:#F3F6FB;--mut:#96A3BE;--ok:#34d399;--warn:#fbbf24;--bad:#f87171}
+:root{--bg:#FFFFFF;--card:#F3F4F6;--blue:#3B82F6;--bright:#1D4ED8;--text:#000000;--mut:#4B5563;--ok:#059669;--warn:#D97706;--bad:#DC2626}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;line-height:1.5}
 main{max-width:860px;margin:0 auto;padding:24px 16px 48px}
 section{display:none}section.on{display:block}
@@ -180,7 +180,7 @@ h1{font-size:clamp(2rem,7vw,3.4rem);line-height:1.1;margin:.3em 0}h2{margin:.2em
 .card{background:var(--card);border-radius:18px;padding:18px;margin:14px 0;box-shadow:0 6px 24px #0004}
 .btn{background:var(--blue);color:#fff;border:0;border-radius:12px;min-height:44px;padding:0 22px;font-size:1rem;font-weight:600;cursor:pointer;margin:4px 6px 4px 0}
 .btn:hover{background:var(--bright)}.btn:disabled{opacity:.4;cursor:not-allowed}.btn.o{background:transparent;border:1px solid var(--mut);color:var(--text)}
-textarea{width:100%;min-height:140px;background:var(--bg);color:var(--text);border:1px dashed var(--mut);border-radius:12px;padding:12px;font:inherit;resize:vertical}
+textarea{width:100%;min-height:140px;background:#FFFFFF;color:#000000;border:1px solid #D1D5DB;border-radius:12px;padding:12px;font:inherit;resize:vertical}
 input[type=file]{color:var(--mut);margin:6px 0;max-width:100%}
 .grid{display:grid;gap:14px;grid-template-columns:1fr}@media(min-width:720px){.grid{grid-template-columns:1fr 1fr}}
 .pill{display:inline-block;padding:5px 12px;border-radius:99px;margin:4px 4px 0 0;font-size:.9rem}
